@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة تحكم · طيب العود</title>
+  <!-- ملف Tailwind مبني مسبقًا (production) بدل سكريبت الـ CDN اللي كان بيترجم كل حاجة داخل المتصفح -->
+  <link href="tailwind-dashboard.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family:'Cairo', sans-serif; background:#f7f5f0; }
+    .btn-gold { background:#C9A84C; color:#0D0C0C; font-weight:700; transition:all .15s; }
+    .btn-gold:hover { background:#b6963f; }
+    .btn-gold:disabled { opacity:.5; cursor:not-allowed; }
+    .tab-btn.active { background:#C9A84C; color:#0D0C0C; }
+    .modal-overlay { background:rgba(0,0,0,0.55); }
+    .field-label { font-size:.8rem; font-weight:600; color:#4b5563; margin-bottom:.25rem; display:block; }
+    .field-input { width:100%; border:1px solid #d1d5db; border-radius:.75rem; padding:.5rem .75rem; font-size:.875rem; }
+    .field-input:focus { outline:none; border-color:#C9A84C; box-shadow:0 0 0 2px rgba(201,168,76,.2); }
+    .drag-handle { cursor:grab; }
+    .row.dragging { opacity:.4; }
+    .gallery-thumb { position:relative; width:64px; height:64px; border-radius:10px; overflow:hidden; border:1px solid #e5e7eb; flex-shrink:0; background:#f3f4f6; display:flex; align-items:center; justify-content:center; }
+    .gallery-thumb img { max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; }
+    .gallery-thumb .remove-thumb { position:absolute; top:2px; left:2px; background:rgba(0,0,0,.6); color:#fff; width:18px; height:18px; border-radius:50%; font-size:11px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-thumb { background:#C9A84C; border-radius:8px; }
+  </style>
+</head>
+<body class="antialiased text-gray-900">
+
+  <div id="authCheckScreen" class="fixed inset-0 bg-dark flex items-center justify-center z-[100]">
+    <p class="text-gold font-bold">جارٍ التحقق من الدخول...</p>
+  </div>
+
+  <div id="dashboardWrap" class="hidden">
+
+    <header class="sticky top-0 z-40 bg-dark text-white shadow-lg border-b border-gold/20">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl font-amiri font-bold text-gold">طيب العود</span>
+          <span class="text-sm text-gray-400">· لوحة التحكم</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <a href="index.html" target="_blank" class="text-sm text-gray-300 hover:text-gold transition">👁️ عرض الموقع</a>
+          <button id="logoutBtn" class="text-sm bg-white/10 border border-white/20 px-3 py-1.5 rounded-full hover:bg-red-500 hover:border-red-500 transition">🚪 تسجيل الخروج</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-6">
+
+      <div class="flex gap-2 mb-6 flex-wrap">
+        <button data-tab="products" class="tab-btn active px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">🧴 المنتجات (العطور)</button>
+        <button data-tab="collections" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">🎁 المجموعات (البوكسات)</button>
+        <button data-tab="orders" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">📦 الطلبات <span id="newOrdersBadge" class="hidden bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full mr-1"></span></button>
+        <button data-tab="topProducts" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">📊 الأكثر طلبًا</button>
+        <button data-tab="ads" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">📢 الإعلانات</button>
+        <button data-tab="accounting" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">💰 المحاسبة</button>
+        <button data-tab="slider" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">🎬 سلايدر الصفحة الرئيسية</button>
+        <button data-tab="settings" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">⚙️ إعدادات الموقع</button>
+        <button data-tab="quiz" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">🌿 مساعد اختيار العطر</button>
+        <button data-tab="coupons" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">🎟️ الكوبونات</button>
+        <button data-tab="reviews" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">⭐ التقييمات <span id="pendingReviewsBadge" class="hidden bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full mr-1"></span></button>
+        <button data-tab="abandonedCarts" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">🛒 عربات متروكة <span id="abandonedCartsBadge" class="hidden bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full mr-1"></span></button>
+        <button data-tab="customers" class="tab-btn px-4 py-2 rounded-full text-sm font-bold bg-gray-200 transition">👥 العملاء</button>
+      </div>
+
+      <div id="toast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl text-sm font-semibold shadow-lg"></div>
+
+      <!-- ===================== PRODUCTS TAB ===================== -->
+      <section id="tab-products">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <input id="productSearch" type="text" placeholder="🔍 ابحث في المنتجات..." class="border border-gray-300 rounded-full px-4 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-gold" />
+          <button id="addProductBtn" class="btn-gold px-4 py-2 rounded-xl text-sm">➕ إضافة عطر جديد</button>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">💡 اسحب من أيقونة <span class="font-bold">⠿</span> لإعادة الترتيب كما يظهر في الموقع.</p>
+        <div id="productsList" class="space-y-2"></div>
+        <div id="productsEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">🧴</p>
+          <p class="mb-4">لا توجد منتجات في قاعدة البيانات بعد.</p>
+          <button id="importDefaultProductsBtn" class="btn-gold px-5 py-2.5 rounded-xl font-bold">📥 استيراد قائمة العطور الأصلية (٢٣ عطر)</button>
+        </div>
+      </section>
+
+      <!-- ===================== COLLECTIONS TAB ===================== -->
+      <section id="tab-collections" class="hidden">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <input id="collectionSearch" type="text" placeholder="🔍 ابحث في المجموعات..." class="border border-gray-300 rounded-full px-4 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-gold" />
+          <button id="addCollectionBtn" class="btn-gold px-4 py-2 rounded-xl text-sm">➕ إضافة مجموعة جديدة</button>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">💡 اسحب من أيقونة <span class="font-bold">⠿</span> لإعادة الترتيب كما يظهر في الموقع.</p>
+        <div id="collectionsList" class="space-y-2"></div>
+        <div id="collectionsEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">🎁</p>
+          <p class="mb-4">لا توجد مجموعات في قاعدة البيانات بعد.</p>
+          <button id="importDefaultCollectionsBtn" class="btn-gold px-5 py-2.5 rounded-xl font-bold">📥 استيراد المجموعات الأصلية (٧ مجموعات)</button>
+        </div>
+      </section>
+
+      <!-- ===================== ORDERS TAB ===================== -->
+      <section id="tab-orders" class="hidden">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <input id="orderSearch" type="text" placeholder="🔍 ابحث بالاسم أو الجوال..." class="border border-gray-300 rounded-full px-4 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-gold" />
+          <div class="flex items-center gap-2 flex-wrap">
+            <button id="exportOrdersBtn" class="text-xs font-bold px-3 py-1.5 rounded-full bg-gray-800 text-white">⬇️ تنزيل نسخة احتياطية (CSV)</button>
+            <div class="flex gap-1.5 flex-wrap" id="orderStatusFilters">
+              <button data-status="all" class="order-filter-btn active text-xs font-bold px-3 py-1.5 rounded-full bg-gray-800 text-white">الكل</button>
+              <button data-status="جديد" class="order-filter-btn text-xs font-bold px-3 py-1.5 rounded-full bg-gray-200">🆕 جديد</button>
+              <button data-status="قيد التنفيذ" class="order-filter-btn text-xs font-bold px-3 py-1.5 rounded-full bg-gray-200">⏳ قيد التنفيذ</button>
+              <button data-status="تم الشحن" class="order-filter-btn text-xs font-bold px-3 py-1.5 rounded-full bg-gray-200">🚚 تم الشحن</button>
+              <button data-status="تم التوصيل والاستلام" class="order-filter-btn text-xs font-bold px-3 py-1.5 rounded-full bg-gray-200">✅ تم التوصيل والاستلام</button>
+              <button data-status="ملغي" class="order-filter-btn text-xs font-bold px-3 py-1.5 rounded-full bg-gray-200">❌ ملغي</button>
+            </div>
+          </div>
+        </div>
+        <div id="ordersList" class="space-y-3"></div>
+        <div id="ordersEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">📦</p>
+          <p>لا توجد طلبات مطابقة.</p>
+        </div>
+        <div class="text-center mt-4">
+          <button id="loadMoreOrdersBtn" class="hidden bg-gray-800 text-white text-sm font-bold px-6 py-2.5 rounded-full hover:bg-gray-700 transition">⬇ تحميل المزيد من الطلبات</button>
+        </div>
+      </section>
+
+      <!-- ===================== TOP PRODUCTS TAB ===================== -->
+      <section id="tab-topProducts" class="hidden">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <p class="text-sm text-gray-500">📊 ترتيب المنتجات والبوكسات حسب عدد مرات طلبها فعليًا من الموقع</p>
+          <button id="refreshTopProductsBtn" class="text-xs font-bold bg-gray-800 text-white px-4 py-2 rounded-full hover:bg-gray-700 transition">🔄 تحديث</button>
+        </div>
+        <div id="topProductsList" class="space-y-2"></div>
+        <div id="topProductsEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">📊</p>
+          <p>لسه مفيش طلبات كفاية لعرض إحصائية.</p>
+        </div>
+      </section>
+
+      <!-- ===================== SLIDER TAB ===================== -->
+      <section id="tab-slider" class="hidden">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <p class="text-sm text-gray-500">🎬 السلايدر اللي بيظهر فوق الصفحة الرئيسية — ممكن يكون فيديو أو صورة</p>
+          <button id="addSlideBtn" class="btn-gold px-4 py-2 rounded-xl text-sm">➕ إضافة سلايد جديد</button>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">💡 اسحب من أيقونة <span class="font-bold">⠿</span> لإعادة الترتيب.</p>
+        <div id="sliderList" class="space-y-2"></div>
+        <div id="sliderEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">🎬</p>
+          <p>لا توجد سلايدات بعد. اضغط "إضافة سلايد جديد" للبدء (الفيديوهات الأصلية هتفضل شغالة لحد ما تضيف بدايل).</p>
+        </div>
+      </section>
+
+      <!-- ===================== ADS TAB ===================== -->
+      <section id="tab-ads" class="hidden">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <p class="text-sm text-gray-500">📢 عداد داخلي بسيط لأحداث البيكسلات (مشاهدة/سلة/شراء) — نظرة سريعة، مش بديل عن Meta/TikTok/Google Ads</p>
+          <button id="refreshAdsBtn" class="text-xs font-bold bg-gray-800 text-white px-4 py-2 rounded-full hover:bg-gray-700 transition">🔄 تحديث</button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+          <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm text-center">
+            <p class="text-2xl mb-1">👁️</p>
+            <p class="text-2xl font-bold text-gray-800" id="adsTotalView">0</p>
+            <p class="text-xs text-gray-500">مشاهدات منتجات</p>
+          </div>
+          <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm text-center">
+            <p class="text-2xl mb-1">🛒</p>
+            <p class="text-2xl font-bold text-gray-800" id="adsTotalCart">0</p>
+            <p class="text-xs text-gray-500">إضافة للسلة</p>
+          </div>
+          <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm text-center">
+            <p class="text-2xl mb-1">✅</p>
+            <p class="text-2xl font-bold text-gray-800" id="adsTotalPurchase">0</p>
+            <p class="text-xs text-gray-500">عمليات شراء</p>
+          </div>
+        </div>
+
+        <h3 class="font-bold text-gray-700 mb-2 text-sm">📅 آخر 14 يوم</h3>
+        <div class="overflow-x-auto mb-6">
+          <table class="w-full text-sm border-collapse">
+            <thead>
+              <tr class="text-gray-400 text-xs border-b border-gray-100">
+                <th class="text-right py-2 font-normal">اليوم</th>
+                <th class="text-center py-2 font-normal">👁️ مشاهدة</th>
+                <th class="text-center py-2 font-normal">🛒 سلة</th>
+                <th class="text-center py-2 font-normal">✅ شراء</th>
+              </tr>
+            </thead>
+            <tbody id="adsDailyTable"></tbody>
+          </table>
+          <div id="adsDailyEmptyState" class="hidden text-center py-10 text-gray-400">
+            <p class="text-3xl mb-2">📅</p>
+            <p>لسه مفيش بيانات كفاية.</p>
+          </div>
+        </div>
+
+        <h3 class="font-bold text-gray-700 mb-2 text-sm">🏆 الأكثر مشاهدة وإضافة للسلة</h3>
+        <div id="adsByProductList" class="space-y-2"></div>
+        <div id="adsByProductEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">📢</p>
+          <p>لسه مفيش بيانات كفاية لعرض ترتيب.</p>
+        </div>
+      </section>
+
+      <!-- ===================== ACCOUNTING TAB ===================== -->
+      <section id="tab-accounting" class="hidden max-w-3xl">
+        <p class="text-sm text-gray-500 mb-4">💰 تقرير داخلي بسيط (مش فاتورة رسمية معتمدة من ZATCA) — بيحسب المبيعات والتكلفة والربح والضريبة بناءً على أسعار التكلفة اللي حطيتها في كل منتج.</p>
+
+        <div class="flex items-center gap-2 mb-4 flex-wrap">
+          <select id="acc_range" class="border border-gray-200 rounded-xl px-3 py-2 text-sm">
+            <option value="all">كل الفترة</option>
+            <option value="month" selected>الشهر الحالي</option>
+            <option value="30days">آخر 30 يوم</option>
+            <option value="7days">آخر 7 أيام</option>
+          </select>
+          <button id="refreshAccountingBtn" class="text-xs font-bold bg-gray-800 text-white px-4 py-2 rounded-full hover:bg-gray-700 transition">🔄 تحديث</button>
+          <button id="exportAccountingBtn" class="text-xs font-bold bg-green-600 text-white px-4 py-2 rounded-full hover:bg-green-700 transition">📥 تصدير CSV</button>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+          <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm text-center">
+            <p class="text-xl mb-1">📦</p>
+            <p class="text-xl font-bold text-gray-800" id="acc_ordersCount">0</p>
+            <p class="text-xs text-gray-500">عدد الطلبات</p>
+          </div>
+          <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm text-center">
+            <p class="text-xl mb-1">💵</p>
+            <p class="text-xl font-bold text-gray-800" id="acc_revenue">0</p>
+            <p class="text-xs text-gray-500">إجمالي المبيعات</p>
+          </div>
+          <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm text-center">
+            <p class="text-xl mb-1">📉</p>
+            <p class="text-xl font-bold text-gray-800" id="acc_cost">0</p>
+            <p class="text-xs text-gray-500">إجمالي التكلفة</p>
+          </div>
+          <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm text-center">
+            <p class="text-xl mb-1">📈</p>
+            <p class="text-xl font-bold text-green-700" id="acc_grossProfit">0</p>
+            <p class="text-xs text-gray-500">الربح الإجمالي</p>
+          </div>
+          <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm text-center">
+            <p class="text-xl mb-1">🧾</p>
+            <p class="text-xl font-bold text-gray-800" id="acc_vat">0</p>
+            <p class="text-xs text-gray-500">ضريبة القيمة المضافة (15%)</p>
+          </div>
+          <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm text-center">
+            <p class="text-xl mb-1">✅</p>
+            <p class="text-xl font-bold text-green-700" id="acc_netProfit">0</p>
+            <p class="text-xs text-gray-500">صافي الربح (بعد الضريبة)</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== SETTINGS TAB ===================== -->
+      <section id="tab-settings" class="hidden max-w-3xl">
+        <form id="settingsForm" class="space-y-8">
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <h3 class="font-bold text-lg mb-4">📞 معلومات التواصل</h3>
+            <label class="field-label">رقم الواتساب لاستقبال الطلبات (بدون + أو صفر، مثال: 966552639303)</label>
+            <input id="s_whatsappNumber" class="field-input" dir="ltr" placeholder="966552639303" />
+          </div>
+
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <h3 class="font-bold text-lg mb-4">📱 روابط التواصل الاجتماعي</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="field-label">📷 انستقرام</label>
+                <input id="s_social_instagram" class="field-input" placeholder="https://instagram.com/..." />
+              </div>
+              <div>
+                <label class="field-label">👻 سناب شات</label>
+                <input id="s_social_snapchat" class="field-input" placeholder="https://snapchat.com/add/..." />
+              </div>
+              <div>
+                <label class="field-label">🎵 تيك توك</label>
+                <input id="s_social_tiktok" class="field-input" placeholder="https://tiktok.com/@..." />
+              </div>
+              <div>
+                <label class="field-label">🐦 تويتر / X</label>
+                <input id="s_social_twitter" class="field-input" placeholder="https://x.com/..." />
+              </div>
+              <div>
+                <label class="field-label">▶️ يوتيوب</label>
+                <input id="s_social_youtube" class="field-input" placeholder="https://youtube.com/@..." />
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <h3 class="font-bold text-lg mb-1">📢 حملات وإعلانات (Pixels)</h3>
+            <p class="text-xs text-gray-500 mb-4">حط هنا معرّفات البيكسل (Pixel ID) بتاعة كل منصة إعلانات بتصرف عليها. لو سبت أي حقل فاضي، هيتجاهل تلقائيًا ومفيش أي تأثير على الموقع. ده بيفعّل التتبع + الـ Retargeting على المنصة دي.</p>
+            <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
+              <div>
+                <label class="field-label">📘 Meta Pixel ID (فيسبوك / انستجرام)</label>
+                <input id="s_metaPixelId" class="field-input" dir="ltr" placeholder="مثال: 1234567890123456" />
+              </div>
+              <div>
+                <label class="field-label">🎵 TikTok Pixel ID</label>
+                <input id="s_tiktokPixelId" class="field-input" dir="ltr" placeholder="مثال: CXXXXXXXXXXXXXXXXXXX" />
+              </div>
+              <div>
+                <label class="field-label">🔍 Google Ads / Analytics ID (يبدأ بـ AW- أو G-)</label>
+                <input id="s_googleAdsId" class="field-input" dir="ltr" placeholder="مثال: AW-123456789" />
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" id="saveSettingsBtn" class="btn-gold px-6 py-3 rounded-xl font-bold w-full md:w-auto">💾 حفظ الإعدادات</button>
+        </form>
+
+        <div class="bg-white rounded-2xl border border-gray-200 p-5 mt-8">
+          <h3 class="font-bold text-lg mb-1">📢 شريط الإعلانات المتحرك</h3>
+          <p class="text-xs text-gray-500 mb-4">شريط نص متحرك بيظهر فوق السلايدر في الصفحة الرئيسية (زي "🚚 شحن مجاني للطلبات فوق 150 ريال"). سيبه غير مفعّل لو مش عايزه يظهر.</p>
+
+          <label class="flex items-center gap-2 mb-4 text-sm">
+            <input type="checkbox" id="ann_enabled" class="w-4 h-4">
+            <span>مفعّل ويظهر على الموقع</span>
+          </label>
+
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label class="field-label">لون الخلفية</label>
+              <input type="color" id="ann_bgColor" class="field-input h-11 cursor-pointer" value="#000000">
+            </div>
+            <div>
+              <label class="field-label">لون النص</label>
+              <input type="color" id="ann_textColor" class="field-input h-11 cursor-pointer" value="#ffffff">
+            </div>
+          </div>
+
+          <label class="field-label">سرعة الحركة (بالثواني — رقم أكبر = أبطأ)</label>
+          <input type="number" id="ann_speed" min="5" max="60" value="20" class="field-input mb-4">
+
+          <label class="field-label">الرسائل بالعربي <span class="text-gray-400 font-normal">(سطر لكل رسالة، وهتتكرر بالتناوب)</span></label>
+          <textarea id="ann_messagesAr" rows="4" class="field-input mb-4" placeholder="🎁 مفاجأة مجانية مع كل طلب
+🚚 الشحن مجاني للطلبات فوق 150 ريال"></textarea>
+
+          <label class="field-label">الرسائل بالإنجليزي <span class="text-gray-400 font-normal">(تظهر بس لما الزائر يبدّل لغة الموقع للإنجليزي — سيبها فاضية لو عايز يفضل يظهر العربي دايمًا)</span></label>
+          <textarea id="ann_messagesEn" rows="4" class="field-input mb-4" dir="ltr" placeholder="🎁 Free surprise with every order
+🚚 Free shipping on orders over SAR 150"></textarea>
+
+          <button id="saveAnnouncementBtn" class="btn-gold px-6 py-3 rounded-xl font-bold w-full md:w-auto">💾 حفظ شريط الإعلانات</button>
+        </div>
+      </section>
+
+      <!-- ===================== QUIZ TAB ===================== -->
+      <section id="tab-quiz" class="hidden max-w-3xl">
+        <div class="grid grid-cols-2 gap-4 mb-6">
+          <div class="bg-white rounded-2xl border border-gray-200 p-5 text-center">
+            <p class="text-xs text-gray-400 mb-1">🧑‍🤝‍🧑 فتحوا الكويز</p>
+            <p id="quizOpensCount" class="text-3xl font-black text-gold">—</p>
+          </div>
+          <div class="bg-white rounded-2xl border border-gray-200 p-5 text-center">
+            <p class="text-xs text-gray-400 mb-1">✅ كملوا الكويز لحد النتيجة</p>
+            <p id="quizCompletionsCount" class="text-3xl font-black text-gold">—</p>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
+          <h3 class="font-bold text-lg mb-1">📊 أكتر اختيارات العملاء تكرارًا</h3>
+          <p class="text-xs text-gray-500 mb-4">ده بيوريك جمهورك بيميل لإيه فعليًا — معلومة مفيدة جدًا للماركتينج ولتطوير عطور/بوكسات جديدة.</p>
+          <div id="quizAnswerBreakdown" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+          <p id="quizAnswerBreakdownEmpty" class="hidden text-xs text-gray-400 text-center py-4">لسه مفيش بيانات كفاية.</p>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
+          <h3 class="font-bold text-lg mb-1">🌿 أنواع الروائح</h3>
+          <p class="text-xs text-gray-500 mb-4">القائمة دي بتظهر كخيارات في الكويز بالموقع، وكمان في قائمة "نوع الرائحة الأساسي" عند تعديل أي عطر أو بوكس.</p>
+          <div id="quizFamiliesList" class="space-y-2 mb-3"></div>
+          <div class="flex gap-2 flex-wrap">
+            <input id="newFamilyAr" placeholder="الاسم بالعربي" class="field-input flex-1 min-w-[140px]" />
+            <input id="newFamilyEn" placeholder="Name in English" dir="ltr" class="field-input flex-1 min-w-[140px]" />
+            <button id="addFamilyBtn" class="btn-gold px-4 py-2 rounded-xl text-sm">➕ إضافة</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-gray-200 p-5 mt-6">
+          <h3 class="font-bold text-lg mb-1">➕ أسئلة إضافية مخصصة</h3>
+          <p class="text-xs text-gray-500 mb-4">اكتب سؤال جديد واختياراته، وهيتضاف كخطوة إضافية في الكويز. بعد الحفظ، هتقدر تحدد لكل عطر/بوكس أي اختيار ينطبق عليه من صفحة تعديله.</p>
+
+          <div id="quizCustomQuestionsList" class="space-y-3 mb-5"></div>
+
+          <div class="border-t border-dashed border-gray-200 pt-4">
+            <p class="text-sm font-bold mb-2">إضافة سؤال جديد</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <input id="newQTextAr" placeholder="نص السؤال بالعربي (مثال: تحب العطر يكون لأي وقت؟)" class="field-input" />
+              <input id="newQTextEn" placeholder="Question text in English" dir="ltr" class="field-input" />
+            </div>
+            <p class="text-xs text-gray-500 mb-2">اختيارات السؤال:</p>
+            <div id="draftOptionsList" class="flex flex-wrap gap-2 mb-2"></div>
+            <div class="flex gap-2 flex-wrap mb-3">
+              <input id="newQOptAr" placeholder="اسم الاختيار بالعربي" class="field-input flex-1 min-w-[120px]" />
+              <input id="newQOptEn" placeholder="Option in English" dir="ltr" class="field-input flex-1 min-w-[120px]" />
+              <button id="addDraftOptionBtn" class="px-4 py-2 rounded-xl text-sm border border-gray-300 hover:bg-gray-50 font-semibold">➕ إضافة اختيار</button>
+            </div>
+            <button id="saveCustomQuestionBtn" class="btn-gold px-5 py-2.5 rounded-xl font-bold text-sm">💾 حفظ السؤال في الكويز</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== COUPONS TAB ===================== -->
+      <section id="tab-coupons" class="hidden">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <p class="text-sm text-gray-500">🎟️ أنشئ أكواد خصم (لأول طلب، لمتابعين انستجرام، حملة معيّنة...) وتابع أداء كل كود.</p>
+          <button id="addCouponBtn" class="btn-gold px-4 py-2 rounded-xl text-sm">➕ إضافة كوبون جديد</button>
+        </div>
+        <div id="couponsList" class="space-y-2"></div>
+        <div id="couponsEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">🎟️</p>
+          <p>لا توجد أكواد خصم بعد.</p>
+        </div>
+      </section>
+
+      <!-- ===================== REVIEWS TAB ===================== -->
+      <section id="tab-reviews" class="hidden">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <p class="text-sm text-gray-500">⭐ راجع تقييمات العملاء ووافق عليها قبل ما تظهر في الموقع.</p>
+          <div class="flex gap-1.5 flex-wrap" id="reviewStatusFilters">
+            <button data-status="pending" class="review-filter-btn active text-xs font-bold px-3 py-1.5 rounded-full bg-gray-800 text-white">⏳ بانتظار الموافقة</button>
+            <button data-status="approved" class="review-filter-btn text-xs font-bold px-3 py-1.5 rounded-full bg-gray-200">✅ موافق عليها</button>
+            <button data-status="all" class="review-filter-btn text-xs font-bold px-3 py-1.5 rounded-full bg-gray-200">الكل</button>
+          </div>
+        </div>
+        <div id="reviewsList" class="space-y-2"></div>
+        <div id="reviewsEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">⭐</p>
+          <p>لا توجد تقييمات في هذه القائمة.</p>
+        </div>
+      </section>
+
+      <!-- ===================== ABANDONED CARTS TAB ===================== -->
+      <section id="tab-abandonedCarts" class="hidden">
+        <p class="text-sm text-gray-500 mb-3">🛒 عملاء دخلوا يشتروا وكتبوا بياناتهم بس ماكملوش الطلب. تقدر تتابعهم مباشرة على واتساب.</p>
+        <div id="abandonedCartsList" class="space-y-2"></div>
+        <div id="abandonedCartsEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">🛒</p>
+          <p>مفيش عربات متروكة دلوقتي — تمام!</p>
+        </div>
+      </section>
+
+      <!-- ===================== CUSTOMERS TAB ===================== -->
+      <section id="tab-customers" class="hidden">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <input id="customerSearch" type="text" placeholder="🔍 ابحث بالاسم أو الجوال..." class="border border-gray-300 rounded-full px-4 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-gold" />
+          <button id="loadCustomersBtn" class="text-xs font-bold bg-gray-800 text-white px-4 py-2 rounded-full hover:bg-gray-700 transition">🔄 تحميل / تحديث بيانات العملاء</button>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">💡 القائمة دي متجمّعة من كل الطلبات المسجّلة، وبتوريك مين عميل دائم ومين اشترى مرة واحدة بس.</p>
+        <div id="customersList" class="space-y-2"></div>
+        <div id="customersEmptyState" class="hidden text-center py-16 text-gray-400">
+          <p class="text-4xl mb-2">👥</p>
+          <p>اضغط "تحميل بيانات العملاء" عشان تشوف القائمة.</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ===================== PRODUCT MODAL ===================== -->
+  <div id="productModalOverlay" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 id="productModalTitle" class="text-lg font-bold">إضافة عطر جديد</h2>
+        <button id="closeProductModal" class="text-gray-400 hover:text-black text-2xl">✕</button>
+      </div>
+      <form id="productForm" class="space-y-4">
+        <input type="hidden" id="p_id" />
+
+        <div>
+          <label class="field-label">صور المنتج (أول صورة هي الصورة الرئيسية)</label>
+          <div id="p_galleryWrap" class="flex items-center gap-2 flex-wrap mb-2"></div>
+          <input type="file" id="p_imgFile" accept="image/*" class="text-xs" />
+          <p id="p_uploadStatus" class="text-xs text-gray-400 mt-1"></p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="field-label">الاسم (عربي) *</label>
+            <input id="p_nameAr" required class="field-input" />
+          </div>
+          <div>
+            <label class="field-label">الاسم (إنجليزي) *</label>
+            <input id="p_nameEn" required class="field-input" dir="ltr" />
+          </div>
+          <div>
+            <label class="field-label">التصنيف (عربي)</label>
+            <input id="p_catAr" class="field-input" placeholder="عطور فاخرة" />
+          </div>
+          <div>
+            <label class="field-label">التصنيف (إنجليزي)</label>
+            <input id="p_catEn" class="field-input" dir="ltr" placeholder="Luxury Perfumes" />
+          </div>
+        </div>
+
+        <div>
+          <label class="field-label">نوع الرائحة الأساسي <span class="text-gray-400 font-normal">(يُستخدم في مساعد اختيار العطر بالموقع)</span></label>
+          <select id="p_scentFamily" class="field-input">
+            <option value="">— غير محدد —</option>
+            <option value="خشبية">خشبية عود</option>
+            <option value="شرقية">شرقية عنبرية</option>
+            <option value="زهرية">زهرية</option>
+            <option value="منعشة">منعشة حمضية</option>
+          </select>
+        </div>
+
+        <div id="p_customTagsWrap" class="space-y-3"></div>
+
+        <div>
+          <label class="field-label">🧪 المكونات <span class="text-gray-400 font-normal">(تظهر بس لما العميل يدوس على العطر ويفتح التفاصيل، اختياري)</span></label>
+          <div id="p_componentsWrap" class="space-y-2 mb-2"></div>
+          <button type="button" id="p_addComponentBtn" class="text-xs font-bold bg-gray-100 px-3 py-2 rounded-lg hover:bg-gray-200">➕ إضافة مكوّن</button>
+        </div>
+
+        <div>
+          <label class="field-label mb-2">الأسعار حسب الدولة (اتركها فاضية عشان تتساوى تلقائيًا مع السعودي)</label>
+          <div class="grid grid-cols-3 md:grid-cols-4 gap-3">
+            <div><label class="text-xs text-gray-400">🇸🇦 SAR *</label><input id="pr_SAR" type="number" step="0.01" required class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇦🇪 AED</label><input id="pr_AED" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇴🇲 OMR</label><input id="pr_OMR" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇶🇦 QAR</label><input id="pr_QAR" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇰🇼 KWD</label><input id="pr_KWD" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇧🇭 BHD</label><input id="pr_BHD" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇯🇴 JOD</label><input id="pr_JOD" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇪🇬 EGP</label><input id="pr_EGP" type="number" step="0.01" class="field-input" /></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="field-label">📦 المخزون المتاح <span class="text-gray-400 font-normal">(سيبها فاضية = مخزون غير محدود)</span></label>
+            <input id="p_stock" type="number" min="0" step="1" class="field-input" placeholder="بدون حد" />
+          </div>
+          <div>
+            <label class="field-label">💰 سعر التكلفة (ر.س) <span class="text-gray-400 font-normal">(داخلي، مش هيظهر للعميل)</span></label>
+            <input id="p_cost" type="number" min="0" step="0.01" class="field-input" placeholder="0" />
+          </div>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button type="submit" id="saveProductBtn" class="btn-gold px-5 py-2.5 rounded-xl font-bold flex-1">💾 حفظ العطر</button>
+          <button type="button" id="cancelProductModal" class="px-5 py-2.5 rounded-xl font-bold border border-gray-300 hover:bg-gray-50">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== COLLECTION MODAL ===================== -->
+  <div id="collectionModalOverlay" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 id="collectionModalTitle" class="text-lg font-bold">إضافة مجموعة جديدة</h2>
+        <button id="closeCollectionModal" class="text-gray-400 hover:text-black text-2xl">✕</button>
+      </div>
+      <form id="collectionForm" class="space-y-4">
+        <input type="hidden" id="c_id" />
+
+        <div>
+          <label class="field-label">صور المجموعة (أول صورة هي الصورة الرئيسية)</label>
+          <div id="c_galleryWrap" class="flex items-center gap-2 flex-wrap mb-2"></div>
+          <input type="file" id="c_imgFile" accept="image/*" class="text-xs" />
+          <p id="c_uploadStatus" class="text-xs text-gray-400 mt-1"></p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="field-label">الاسم (عربي) *</label>
+            <input id="c_nameAr" required class="field-input" />
+          </div>
+          <div>
+            <label class="field-label">الاسم (إنجليزي) *</label>
+            <input id="c_nameEn" required class="field-input" dir="ltr" />
+          </div>
+        </div>
+        <div>
+          <label class="field-label">الوصف (عربي)</label>
+          <textarea id="c_descAr" rows="2" class="field-input"></textarea>
+        </div>
+        <div>
+          <label class="field-label">الوصف (إنجليزي)</label>
+          <textarea id="c_descEn" rows="2" class="field-input" dir="ltr"></textarea>
+        </div>
+
+        <div>
+          <label class="field-label">نوع الرائحة الأساسي <span class="text-gray-400 font-normal">(يُستخدم في مساعد اختيار العطر بالموقع)</span></label>
+          <select id="c_scentFamily" class="field-input">
+            <option value="">— غير محدد —</option>
+            <option value="خشبية">خشبية عود</option>
+            <option value="شرقية">شرقية عنبرية</option>
+            <option value="زهرية">زهرية</option>
+            <option value="منعشة">منعشة حمضية</option>
+          </select>
+        </div>
+
+        <div id="c_customTagsWrap" class="space-y-3"></div>
+
+        <div>
+          <label class="field-label">🧪 المكونات <span class="text-gray-400 font-normal">(مثلاً: زجاجة "عطر شفق" تتكون من شجرة العود + زيت... — تظهر بس عند فتح تفاصيل البوكس)</span></label>
+          <div id="c_componentsWrap" class="space-y-2 mb-2"></div>
+          <button type="button" id="c_addComponentBtn" class="text-xs font-bold bg-gray-100 px-3 py-2 rounded-lg hover:bg-gray-200">➕ إضافة مكوّن (زجاجة)</button>
+        </div>
+
+        <div>
+          <label class="field-label mb-2">الأسعار حسب الدولة (اتركها فاضية عشان تتساوى تلقائيًا مع السعودي)</label>
+          <div class="grid grid-cols-3 md:grid-cols-4 gap-3">
+            <div><label class="text-xs text-gray-400">🇸🇦 SAR *</label><input id="cr_SAR" type="number" step="0.01" required class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇦🇪 AED</label><input id="cr_AED" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇴🇲 OMR</label><input id="cr_OMR" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇶🇦 QAR</label><input id="cr_QAR" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇰🇼 KWD</label><input id="cr_KWD" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇧🇭 BHD</label><input id="cr_BHD" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇯🇴 JOD</label><input id="cr_JOD" type="number" step="0.01" class="field-input" /></div>
+            <div><label class="text-xs text-gray-400">🇪🇬 EGP</label><input id="cr_EGP" type="number" step="0.01" class="field-input" /></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="field-label">📦 المخزون المتاح <span class="text-gray-400 font-normal">(سيبها فاضية = مخزون غير محدود)</span></label>
+            <input id="c_stock" type="number" min="0" step="1" class="field-input" placeholder="بدون حد" />
+          </div>
+          <div>
+            <label class="field-label">💰 سعر التكلفة (ر.س) <span class="text-gray-400 font-normal">(داخلي، مش هيظهر للعميل)</span></label>
+            <input id="c_cost" type="number" min="0" step="0.01" class="field-input" placeholder="0" />
+          </div>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button type="submit" id="saveCollectionBtn" class="btn-gold px-5 py-2.5 rounded-xl font-bold flex-1">💾 حفظ المجموعة</button>
+          <button type="button" id="cancelCollectionModal" class="px-5 py-2.5 rounded-xl font-bold border border-gray-300 hover:bg-gray-50">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== COUPON MODAL ===================== -->
+  <div id="couponModalOverlay" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 id="couponModalTitle" class="text-lg font-bold">إضافة كوبون جديد</h2>
+        <button id="closeCouponModal" class="text-gray-400 hover:text-black text-2xl">✕</button>
+      </div>
+      <form id="couponForm" class="space-y-4">
+        <input type="hidden" id="cp_docId" />
+        <div>
+          <label class="field-label">كود الخصم (بالإنجليزي، هيتحول لحروف كبيرة تلقائيًا)</label>
+          <input id="cp_code" class="field-input" dir="ltr" placeholder="مثال: WELCOME10" required />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="field-label">نوع الخصم</label>
+            <select id="cp_type" class="field-input">
+              <option value="percent">نسبة مئوية %</option>
+              <option value="fixed">مبلغ ثابت</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">القيمة</label>
+            <input id="cp_value" type="number" min="0" step="0.01" class="field-input" placeholder="مثال: 10" required />
+          </div>
+        </div>
+        <div>
+          <label class="field-label">حد الاستخدام (اختياري — سيبه فاضي لو غير محدود)</label>
+          <input id="cp_usageLimit" type="number" min="1" step="1" class="field-input" placeholder="مثال: 100" />
+        </div>
+        <div>
+          <label class="flex items-center gap-2 text-sm cursor-pointer mb-2">
+            <input type="checkbox" id="cp_allCountries" class="accent-gold" checked />
+            متاح لكل الدول
+          </label>
+          <p class="text-xs text-gray-500 mb-2">⚠️ مهم جدًا لو الخصم "مبلغ ثابت": القيمة بتتطبق بنفس الرقم في عملة كل دولة تحددها، فمنطقي تحدد دولة واحدة بس عند استخدام مبلغ ثابت (10 مثلاً تبقى 10 ريال سعودي، مش منطقي تتطبق كـ10 دينار كويتي كمان).</p>
+          <div id="cp_countriesWrap" class="grid grid-cols-2 gap-2 hidden">
+            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" class="cp-country accent-gold" value="SA">🇸🇦 السعودية</label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" class="cp-country accent-gold" value="AE">🇦🇪 الإمارات</label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" class="cp-country accent-gold" value="OM">🇴🇲 عمان</label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" class="cp-country accent-gold" value="QA">🇶🇦 قطر</label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" class="cp-country accent-gold" value="KW">🇰🇼 الكويت</label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" class="cp-country accent-gold" value="BH">🇧🇭 البحرين</label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" class="cp-country accent-gold" value="JO">🇯🇴 الأردن</label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" class="cp-country accent-gold" value="EG">🇪🇬 مصر</label>
+          </div>
+        </div>
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" id="cp_active" class="accent-gold" checked />
+          الكوبون فعّال ومتاح للاستخدام الآن
+        </label>
+        <div class="flex gap-2 pt-2">
+          <button type="submit" id="saveCouponBtn" class="btn-gold px-5 py-2.5 rounded-xl font-bold flex-1">💾 حفظ الكوبون</button>
+          <button type="button" id="cancelCouponModal" class="px-5 py-2.5 rounded-xl font-bold border border-gray-300 hover:bg-gray-50">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== DELETE CONFIRM MODAL ===================== -->
+  <div id="deleteModalOverlay" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+      <p class="text-4xl mb-2">🗑️</p>
+      <h2 class="font-bold text-lg mb-2">تأكيد الحذف</h2>
+      <p class="text-sm text-gray-500 mb-5">هل أنت متأكد من حذف "<span id="deleteItemName" class="font-semibold text-gray-800"></span>"؟</p>
+      <div class="flex gap-2">
+        <button id="confirmDeleteBtn" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2.5 rounded-xl transition">حذف نهائيًا</button>
+        <button id="cancelDeleteBtn" class="flex-1 border border-gray-300 hover:bg-gray-50 font-bold py-2.5 rounded-xl transition">إلغاء</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== SLIDE MODAL ===================== -->
+  <div id="slideModalOverlay" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 id="slideModalTitle" class="text-lg font-bold">إضافة سلايد جديد</h2>
+        <button id="closeSlideModal" class="text-gray-400 hover:text-black text-2xl">✕</button>
+      </div>
+      <form id="slideForm" class="space-y-4">
+        <input type="hidden" id="sl_docId" />
+
+        <div>
+          <label class="field-label mb-2">نوع السلايد</label>
+          <div class="flex gap-3">
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name="sl_type" value="image" id="sl_type_image" class="accent-gold" checked />
+              🖼️ صورة
+            </label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name="sl_type" value="video" id="sl_type_video" class="accent-gold" />
+              🎬 فيديو
+            </label>
+          </div>
+        </div>
+
+        <div id="sl_imageBlock">
+          <label class="field-label">ارفع صورة</label>
+          <div id="sl_imgPreviewWrap" class="w-full h-32 rounded-xl border border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50 mb-2">
+            <img id="sl_imgPreview" src="" class="w-full h-full hidden" style="object-fit:contain;" />
+            <span id="sl_imgPlaceholder" class="text-3xl">🖼️</span>
+          </div>
+          <input type="file" id="sl_imgFile" accept="image/*" class="text-xs w-full" />
+          <p id="sl_uploadStatus" class="text-xs text-gray-400 mt-1"></p>
+        </div>
+
+        <div id="sl_videoBlock" class="hidden">
+          <label class="field-label">رابط الفيديو المباشر (mp4)</label>
+          <input id="sl_videoUrl" class="field-input" dir="ltr" placeholder="https://example.com/video.mp4" />
+          <p class="text-xs text-gray-400 mt-1">💡 ارفع الفيديو على أي استضافة مجانية (مثلاً نفس مجلد الموقع على GitHub) والصق الرابط المباشر هنا.</p>
+        </div>
+
+        <input type="hidden" id="sl_url" />
+
+        <div class="flex gap-2 pt-2">
+          <button type="submit" id="saveSlideBtn" class="btn-gold px-5 py-2.5 rounded-xl font-bold flex-1">💾 حفظ السلايد</button>
+          <button type="button" id="cancelSlideModal" class="px-5 py-2.5 rounded-xl font-bold border border-gray-300 hover:bg-gray-50">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>

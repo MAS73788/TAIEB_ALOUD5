@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تسجيل الدخول · طلبات طيب العود</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family:'Cairo',sans-serif;
+      background:#0D0C0C;
+      color:#fff;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      direction:rtl;
+      padding:20px;
+    }
+    .wrap { width:100%; max-width:380px; }
+    .brand { text-align:center; margin-bottom:24px; }
+    .brand h1 {
+      font-family:'Amiri',serif;
+      font-size:28px;
+      color:#C9A84C;
+      letter-spacing:0.5px;
+    }
+    .brand p { color:rgba(255,255,255,0.5); font-size:13px; margin-top:4px; }
+    .card {
+      background:linear-gradient(145deg, #1a1a1a 0%, #0D0C0C 100%);
+      border:1px solid rgba(201,168,76,0.2);
+      border-radius:18px;
+      padding:28px;
+      box-shadow:0 20px 60px rgba(0,0,0,0.4);
+    }
+    label { display:block; font-size:13px; margin-bottom:6px; color:rgba(255,255,255,0.7); }
+    input {
+      width:100%;
+      background:rgba(255,255,255,0.05);
+      border:1px solid rgba(255,255,255,0.1);
+      border-radius:12px;
+      padding:11px 14px;
+      font-size:14px;
+      color:#fff;
+      margin-bottom:16px;
+      font-family:inherit;
+      outline:none;
+      transition:border-color 0.2s;
+    }
+    input:focus { border-color:#C9A84C; }
+    button {
+      width:100%;
+      background:#C9A84C;
+      color:#0D0C0C;
+      border:none;
+      border-radius:12px;
+      padding:12px;
+      font-weight:700;
+      font-size:15px;
+      cursor:pointer;
+      font-family:inherit;
+      transition:all 0.15s;
+    }
+    button:hover { background:#dbbb5e; }
+    button:disabled { opacity:0.5; cursor:not-allowed; }
+    .error { color:#ff6b6b; font-size:13px; margin-bottom:12px; display:none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <h1>طيب العود</h1>
+      <p>صفحة متابعة الطلبات — للعمّال</p>
+    </div>
+
+    <div class="card">
+      <form id="loginForm">
+        <label for="username">اسم المستخدم</label>
+        <input type="text" id="username" required autocomplete="username" placeholder="" />
+
+        <label for="password">كلمة المرور</label>
+        <input type="password" id="password" required autocomplete="current-password" placeholder="" />
+
+        <p class="error" id="errorMsg"></p>
+
+        <button type="submit" id="loginBtn">دخول</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { auth } from './firebase-config.js';
+    import { signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+    // اسم المستخدم "worker" بيتحول داخليًا لحساب Firebase ثابت — لازم يتعمل مرة واحدة من Firebase Console
+    const WORKER_EMAIL = 'worker@taieb-aloud.com';
+
+    const loginForm = document.getElementById('loginForm');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const errorMsg = document.getElementById('errorMsg');
+    const loginBtn = document.getElementById('loginBtn');
+
+    onAuthStateChanged(auth, (user) => {
+      if (user && user.email === WORKER_EMAIL) window.location.href = 'worker.html';
+    });
+
+    function showError(message) {
+      errorMsg.textContent = message;
+      errorMsg.style.display = 'block';
+    }
+    function hideError() { errorMsg.style.display = 'none'; }
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+      if (usernameInput.value.trim().toLowerCase() !== 'worker') {
+        showError('اسم المستخدم أو كلمة المرور غير صحيحة');
+        return;
+      }
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'جارٍ الدخول...';
+      try {
+        await signInWithEmailAndPassword(auth, WORKER_EMAIL, passwordInput.value);
+        // بنسجل إننا سجلنا دخول لتونا، عشان صفحة worker.html متطردش المستخدم
+        // لو جلسة الدخول لسه بتتحفظ في المتصفح لحظة الانتقال بين الصفحتين
+        sessionStorage.setItem('justLoggedIn', '1');
+        window.location.href = 'worker.html';
+      } catch (err) {
+        showError('اسم المستخدم أو كلمة المرور غير صحيحة');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'دخول';
+      }
+    });
+  </script>
+</body>
+</html>

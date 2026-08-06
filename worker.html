@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>متابعة الطلبات · طيب العود</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <!-- ملف Tailwind مبني مسبقًا (production) بدل سكريبت الـ CDN اللي كان بيترجم كل حاجة داخل المتصفح -->
+  <link href="tailwind-dashboard.css" rel="stylesheet" />
+  <style>
+    body { font-family:'Cairo',sans-serif; font-size:15px; }
+    .toast {
+      position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(150%);
+      background:#1a1a1a; color:#fff; padding:12px 22px; border-radius:30px;
+      font-size:14.5px; font-weight:700; z-index:100; transition:transform 0.3s;
+      box-shadow:0 10px 30px rgba(0,0,0,0.3);
+    }
+    .toast.show { transform:translateX(-50%) translateY(0); }
+    .zoomable-img { cursor:zoom-in; }
+    #lightboxOverlay {
+      display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85);
+      z-index:200; align-items:center; justify-content:center; padding:24px; cursor:zoom-out;
+    }
+    #lightboxOverlay.show { display:flex; }
+    #lightboxOverlay img { max-width:92vw; max-height:88vh; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.5); }
+  </style>
+</head>
+<body class="bg-gray-100" dir="rtl">
+
+  <div id="lightboxOverlay" onclick="this.classList.remove('show')">
+    <img id="lightboxImg" src="" alt="">
+  </div>
+
+  <div id="authGate" class="min-h-screen flex items-center justify-center">
+    <p class="text-gray-400 text-base">جارٍ التحقق من الدخول...</p>
+  </div>
+
+  <div id="appRoot" class="hidden">
+    <header class="bg-dark text-white sticky top-0 z-20 shadow-lg">
+      <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div>
+          <h1 class="font-bold text-xl" style="color:#C9A84C;">📦 متابعة الطلبات</h1>
+          <p class="text-sm text-gray-400">طيب العود</p>
+        </div>
+        <button id="logoutBtn" class="text-sm bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full font-bold transition">تسجيل الخروج</button>
+      </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 py-5">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <input id="orderSearch" type="text" placeholder="🔍 ابحث بالاسم أو الجوال..." class="border border-gray-300 rounded-full px-4 py-2 text-base w-64 focus:outline-none focus:ring-2 focus:ring-gold bg-white" />
+        <div class="flex gap-1.5 flex-wrap" id="orderStatusFilters">
+          <button data-status="all" class="order-filter-btn active text-sm font-bold px-3.5 py-1.5 rounded-full bg-gray-800 text-white">الكل</button>
+          <button data-status="جديد" class="order-filter-btn text-sm font-bold px-3.5 py-1.5 rounded-full bg-white border border-gray-300">🆕 جديد</button>
+          <button data-status="قيد التنفيذ" class="order-filter-btn text-sm font-bold px-3.5 py-1.5 rounded-full bg-white border border-gray-300">⏳ قيد التنفيذ</button>
+          <button data-status="تم الشحن" class="order-filter-btn text-sm font-bold px-3.5 py-1.5 rounded-full bg-white border border-gray-300">🚚 تم الشحن</button>
+          <button data-status="تم التوصيل والاستلام" class="order-filter-btn text-sm font-bold px-3.5 py-1.5 rounded-full bg-white border border-gray-300">✅ تم التوصيل والاستلام</button>
+        </div>
+      </div>
+
+      <div id="ordersList" class="space-y-3"></div>
+      <div id="ordersEmptyState" class="hidden text-center py-16 text-gray-400">
+        <p class="text-4xl mb-2">📦</p>
+        <p class="text-base">لا توجد طلبات مطابقة.</p>
+      </div>
+      <div class="text-center mt-5">
+        <button id="loadMoreOrdersBtn" class="hidden bg-gray-800 text-white text-base font-bold px-6 py-2.5 rounded-full hover:bg-gray-700 transition">⬇ تحميل المزيد من الطلبات</button>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script type="module">
+    import { auth, db } from './firebase-config.js';
+    import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import {
+      collection, query, orderBy, limit, startAfter, onSnapshot, getDocs, doc, updateDoc
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const WORKER_EMAIL = 'worker@taieb-aloud.com';
+    const PAGE_SIZE = 50;
+    const WORKER_STATUS_OPTIONS = ['جديد', 'قيد التنفيذ', 'تم الشحن', 'تم التوصيل والاستلام'];
+    const STATUS_COLORS = {
+      'جديد': 'bg-blue-100 text-blue-700 border-blue-300',
+      'قيد التنفيذ': 'bg-amber-100 text-amber-700 border-amber-300',
+      'تم الشحن': 'bg-purple-100 text-purple-700 border-purple-300',
+      'تم التوصيل والاستلام': 'bg-green-100 text-green-700 border-green-300',
+      'ملغي': 'bg-red-100 text-red-700 border-red-300'
+    };
+    const PAYMENT_ICONS = { mada: '💳 مدى', bank: '🏦 تحويل بنكي', stc: '📱 STC Pay', cod: '💵 عند الاستلام' };
+
+    let allOrders = [];
+    let currentFilter = 'all';
+    let lastVisible = null;
+    let hasMore = false;
+    let loadingMore = false;
+    let firstLoad = true;
+
+    function enterApp() {
+      sessionStorage.removeItem('justLoggedIn');
+      document.getElementById('authGate').classList.add('hidden');
+      document.getElementById('appRoot').classList.remove('hidden');
+      init();
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      if (user && user.email === WORKER_EMAIL) {
+        enterApp();
+        return;
+      }
+      // ⚠️ إصلاح مشكلة "الدخول ثم الرجوع فورًا لصفحة تسجيل الدخول":
+      // لو جاي لتوّه من صفحة worker-login.html بعد تسجيل دخول ناجح، ممكن جلسة
+      // الدخول تاخد جزء من الثانية عشان تتحفظ في المتصفح قبل ما الصفحة تتحمل.
+      // فبدل ما نطرده فورًا، بنديله فرصة أخيرة (نص ثانية) نتأكد فيها من auth.currentUser
+      // مباشرة قبل ما نحكم إنه مش مسجل دخول فعلًا.
+      if (sessionStorage.getItem('justLoggedIn') === '1') {
+        setTimeout(() => {
+          if (auth.currentUser && auth.currentUser.email === WORKER_EMAIL) {
+            enterApp();
+          } else {
+            sessionStorage.removeItem('justLoggedIn');
+            window.location.href = 'worker-login.html';
+          }
+        }, 700);
+      } else {
+        window.location.href = 'worker-login.html';
+      }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await signOut(auth);
+      window.location.href = 'worker-login.html';
+    });
+
+    function escapeHTML(str) {
+      const div = document.createElement('div');
+      div.textContent = str ?? '';
+      return div.innerHTML;
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    function timeAgoAr(ts) {
+      if (!ts) return '';
+      const date = ts.toDate ? ts.toDate() : new Date(ts);
+      const diffMs = Date.now() - date.getTime();
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return 'الآن';
+      if (mins < 60) return `منذ ${mins} دقيقة`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `منذ ${hrs} ساعة`;
+      const days = Math.floor(hrs / 24);
+      if (days < 30) return `منذ ${days} يوم`;
+      return date.toLocaleDateString('ar-EG');
+    }
+
+    function init() {
+      const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
+      onSnapshot(q, (snap) => {
+        if (!firstLoad) {
+          const added = snap.docChanges().filter(c => c.type === 'added');
+          if (added.length > 0) showToast(`🔔 وصل طلب جديد (${added.length})`);
+        }
+        const liveOrders = snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
+        const extra = allOrders.filter(o => o._extra && !liveOrders.some(l => l._docId === o._docId));
+        allOrders = [...liveOrders, ...extra];
+        lastVisible = snap.docs[snap.docs.length - 1] || null;
+        hasMore = snap.docs.length === PAGE_SIZE;
+        applyFilters();
+        updateLoadMoreBtn();
+        firstLoad = false;
+      }, (err) => {
+        console.error(err);
+        showToast('تعذر تحميل الطلبات');
+      });
+
+      document.querySelectorAll('.order-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.order-filter-btn').forEach(b => {
+            b.classList.remove('active', 'bg-gray-800', 'text-white');
+            b.classList.add('bg-white', 'border', 'border-gray-300');
+          });
+          btn.classList.add('active', 'bg-gray-800', 'text-white');
+          btn.classList.remove('bg-white', 'border', 'border-gray-300');
+          currentFilter = btn.dataset.status;
+          applyFilters();
+        });
+      });
+      document.getElementById('orderSearch').addEventListener('input', applyFilters);
+      document.getElementById('loadMoreOrdersBtn').addEventListener('click', loadMore);
+    }
+
+    async function loadMore() {
+      if (!hasMore || loadingMore || !lastVisible) return;
+      loadingMore = true;
+      updateLoadMoreBtn();
+      try {
+        const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), startAfter(lastVisible), limit(PAGE_SIZE));
+        const snap = await getDocs(q);
+        const more = snap.docs.map(d => ({ _docId: d.id, ...d.data(), _extra: true }));
+        allOrders = [...allOrders, ...more];
+        lastVisible = snap.docs[snap.docs.length - 1] || lastVisible;
+        hasMore = snap.docs.length === PAGE_SIZE;
+        applyFilters();
+      } catch (err) {
+        console.error(err);
+        showToast('تعذر تحميل المزيد');
+      }
+      loadingMore = false;
+      updateLoadMoreBtn();
+    }
+
+    function updateLoadMoreBtn() {
+      const btn = document.getElementById('loadMoreOrdersBtn');
+      if (!hasMore) { btn.classList.add('hidden'); return; }
+      btn.classList.remove('hidden');
+      btn.disabled = loadingMore;
+      btn.textContent = loadingMore ? 'جارٍ التحميل...' : '⬇ تحميل المزيد من الطلبات';
+    }
+
+    function applyFilters() {
+      const term = (document.getElementById('orderSearch').value || '').trim().toLowerCase();
+      let list = allOrders;
+      if (currentFilter !== 'all') list = list.filter(o => (o.status || 'جديد') === currentFilter);
+      if (term) list = list.filter(o => (o.name || '').toLowerCase().includes(term) || (o.phone || '').toLowerCase().includes(term));
+      render(list);
+    }
+
+    async function updateStatus(docId, newStatus) {
+      try {
+        await updateDoc(doc(db, 'orders', docId), { status: newStatus });
+        const o = allOrders.find(x => x._docId === docId);
+        if (o) o.status = newStatus;
+        showToast('تم تحديث حالة الطلب ✅');
+      } catch (err) {
+        console.error(err);
+        showToast('تعذر تحديث الحالة');
+      }
+    }
+
+    const SHIPPING_WA_NUMBER = '201097352453'; // رقم واتساب شركة الشحن
+
+    function buildShippingText(o) {
+      const payLabel = PAYMENT_ICONS[o.payment] || o.paymentLabel || o.payment || '';
+      let t = `👤 الاسم: ${o.name || ''}\n📞 الجوال: ${o.phone || ''}`;
+      if (o.email) t += `\n📧 الإيميل: ${o.email}`;
+      t += `\n🏙️ المدينة: ${o.city || ''}\n🏘️ الحي: ${o.district || ''}\n🛣️ العنوان: ${o.addr || ''}`;
+      if (o.nationalAddr) t += `\n🏠 العنوان الوطني: ${o.nationalAddr}`;
+      if (o.mapsLink) t += `\n📍 الموقع على الخريطة: ${o.mapsLink}`;
+      if (o.notes) t += `\n📝 ملاحظات: ${o.notes}`;
+      t += `\n\n📦 الطلب:\n`;
+      (o.items || []).forEach(it => { t += `- ${it.nameAr || it.name || ''} (${it.price ?? ''} ${o.currency || ''})\n`; });
+      t += `\n💰 الإجمالي: ${o.total ?? 0} ${o.currency || ''}\n💳 طريقة الدفع: ${payLabel}`;
+      return t;
+    }
+
+    async function copyShippingInfo(docId) {
+      const o = allOrders.find(x => x._docId === docId);
+      if (!o) return;
+      try {
+        await navigator.clipboard.writeText(buildShippingText(o));
+        showToast('تم نسخ بيانات الطلب ✅');
+      } catch (err) {
+        showToast('تعذر النسخ، حاول يدويًا');
+      }
+    }
+
+    function forwardToShippingCompany(docId) {
+      const o = allOrders.find(x => x._docId === docId);
+      if (!o) return;
+      const text = buildShippingText(o);
+      window.open(`https://wa.me/${SHIPPING_WA_NUMBER}?text=${encodeURIComponent(text)}`, '_blank');
+    }
+
+    function openLightbox(url) {
+      if (!url) return;
+      document.getElementById('lightboxImg').src = url;
+      document.getElementById('lightboxOverlay').classList.add('show');
+    }
+
+    function render(list) {
+      const container = document.getElementById('ordersList');
+      const empty = document.getElementById('ordersEmptyState');
+      if (!list.length) { container.innerHTML = ''; empty.classList.remove('hidden'); return; }
+      empty.classList.add('hidden');
+
+      container.innerHTML = list.map(o => {
+        const status = o.status || 'جديد';
+        const color = STATUS_COLORS[status] || STATUS_COLORS['جديد'];
+        const itemsHTML = (o.items || []).map(it => {
+          const safeImg = it.image ? it.image : '';
+          const imgTag = safeImg
+            ? `<img src="${escapeHTML(safeImg)}" data-full="${escapeHTML(safeImg)}" class="zoomable-img w-14 h-14 object-cover rounded-lg border border-gray-200 flex-shrink-0 hover:opacity-80 transition" onerror="this.style.display='none'" alt="">`
+            : `<span class="w-14 h-14 rounded-lg bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">🧴</span>`;
+          return `<div class="flex items-center gap-3 py-1.5 text-base">${imgTag}<span>${escapeHTML(it.nameAr || it.name || '')} — ${escapeHTML(String(it.price ?? ''))} ${escapeHTML(o.currency || '')}</span></div>`;
+        }).join('');
+        const paymentLabel = PAYMENT_ICONS[o.payment] || escapeHTML(o.paymentLabel || o.payment || '');
+        const safeProof = /^https:\/\//i.test(o.paymentProofUrl || '') ? o.paymentProofUrl : '';
+        const proofHTML = safeProof
+          ? `<img src="${escapeHTML(safeProof)}" data-full="${escapeHTML(safeProof)}" class="zoomable-img w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition mt-2" alt="إثبات الدفع">`
+          : '';
+        const safeMaps = /^https:\/\//i.test(o.mapsLink || '') ? o.mapsLink : '';
+        const mapsHTML = safeMaps
+          ? `<a href="${escapeHTML(safeMaps)}" target="_blank" rel="noopener" class="text-blue-600 underline text-sm">📍 عرض الموقع على الخريطة</a>` : '';
+
+        let statusControlHTML;
+        if (status === 'ملغي') {
+          statusControlHTML = `<span class="text-sm px-3 py-1.5 rounded-full border ${color} font-bold">❌ ملغي</span>`;
+        } else {
+          const opts = WORKER_STATUS_OPTIONS.map(s => `<option value="${s}" ${s === status ? 'selected' : ''}>${s}</option>`).join('');
+          statusControlHTML = `<select data-docid="${o._docId}" class="status-select text-sm border border-gray-300 rounded-full px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gold bg-white font-bold">${opts}</select>`;
+        }
+
+        return `
+        <div class="border border-gray-200 rounded-2xl p-4 bg-white shadow-sm">
+          <div class="flex items-start justify-between flex-wrap gap-2">
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-bold text-gray-800 text-lg">${escapeHTML(o.name || '—')}</span>
+                <span class="text-sm px-2.5 py-1 rounded-full border ${color} font-bold">${escapeHTML(status)}</span>
+                <span class="text-sm text-gray-400">${timeAgoAr(o.createdAt)}</span>
+              </div>
+              <div class="text-base text-gray-500 mt-1">📞 ${escapeHTML(o.phone || '')} &nbsp;|&nbsp; 🏙️ ${escapeHTML(o.city || '')} - ${escapeHTML(o.district || '')}</div>
+              ${o.email ? `<div class="text-base text-gray-500 mt-0.5">📧 ${escapeHTML(o.email)}</div>` : ''}
+              <div class="text-sm text-gray-400 mt-1">${escapeHTML(o.addr || '')}${o.nationalAddr ? ' | العنوان الوطني: ' + escapeHTML(o.nationalAddr) : ''}</div>
+              ${mapsHTML}
+              ${o.notes ? `<div class="text-sm text-gray-500 mt-1">📝 ${escapeHTML(o.notes)}</div>` : ''}
+            </div>
+            <div class="text-left">
+              <div class="font-bold text-gold text-2xl">${escapeHTML(String(o.total ?? 0))} ${escapeHTML(o.currency || '')}</div>
+              <div class="text-sm text-gray-500 mt-1">${paymentLabel}</div>
+              ${proofHTML}
+            </div>
+          </div>
+          <div class="text-base text-gray-600 mt-3 border-t border-gray-100 pt-2 space-y-0.5">${itemsHTML}</div>
+          <div class="flex items-center justify-between flex-wrap gap-2 mt-3 pt-2 border-t border-gray-100">
+            <div class="flex gap-2 flex-wrap">
+              <button class="copy-btn text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold px-3.5 py-2 rounded-full transition" data-docid="${o._docId}">📋 نسخ بيانات الطلب</button>
+              <button class="ship-btn text-sm bg-green-50 hover:bg-green-100 text-green-700 font-bold px-3.5 py-2 rounded-full transition" data-docid="${o._docId}">🚚 تحويل لشركة الشحن</button>
+            </div>
+            ${statusControlHTML}
+          </div>
+        </div>`;
+      }).join('');
+
+      container.querySelectorAll('.status-select').forEach(sel => {
+        sel.addEventListener('change', () => updateStatus(sel.dataset.docid, sel.value));
+      });
+      container.querySelectorAll('.copy-btn').forEach(b => {
+        b.addEventListener('click', () => copyShippingInfo(b.dataset.docid));
+      });
+      container.querySelectorAll('.ship-btn').forEach(b => {
+        b.addEventListener('click', () => forwardToShippingCompany(b.dataset.docid));
+      });
+      container.querySelectorAll('.zoomable-img').forEach(img => {
+        img.addEventListener('click', () => openLightbox(img.dataset.full));
+      });
+    }
+  </script>
+</body>
+</html>
